@@ -16,15 +16,10 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 # [END import_module]
 
 POSTGRES_CONN_ID = "Life-DB-Postgres-Con"
-API_KEY = "YjY3M2U1MmUtOGM1Yy00ZThlLWI5YTgtN2RhNTIxYWEwYmEx"
 WORKSPACE_ID = "6085d94933c9f53b5dd2b895"
 USER_ID = "6085d94833c9f53b5dd2b892"
 TIME_ENTRY_URL = f"api/v1/workspaces/{WORKSPACE_ID}/user/{USER_ID}/time-entries"
 DATETIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
-"""
-curl -X GET -H "x-api-key: YjY3M2U1MmUtOGM1Yy00ZThlLWI5YTgtN2RhNTIxYWEwYmEx" "https://api.clockify.me/api/v1/workspaces/6085d94933c9f53b5dd2b895/user/6085d94833c9f53b5dd2b892/time-entries?start=2023-08-01T00:00:00Z&end=2023-08-08T00:00:00Z"
-"""
-
 
 # [START instantiate_dag]
 @dag(dag_id="clockify_dag", schedule=None, start_date=pendulum.datetime(2021, 1, 1, tz="UTC"), catchup=False, tags=["clockify"])
@@ -65,7 +60,19 @@ def clockify_dag():
                 #clockify_entry['duration']
             )
             base_sql += values + ","
-        base_sq = base_sql[:-1] + ";"
+        base_sq = base_sql[:-1] + """
+ON CONFLICT (id) DO UPDATE SET
+    user_id = EXCLUDED.user_id,
+    workspace_id = EXCLUDED.workspace_id,
+    project_id = EXCLUDED.project_id,
+    task_id = EXCLUDED.task_id,
+    description = EXCLUDED.description,
+    billable = EXCLUDED.billable,
+    is_locked = EXCLUDED.is_locked,
+    type = EXCLUDED.type,
+    start_time = EXCLUDED.start_time,
+    end_time = EXCLUDED.end_time;
+"""
 
         return base_sq
     
@@ -79,7 +86,6 @@ def clockify_dag():
         http_conn_id="clockify_api",
         endpoint=TIME_ENTRY_URL,
         data={"start": (datetime.now()-timedelta(weeks=1, days=1)).strftime(DATETIME_FMT), "end": (datetime.now()-timedelta(days=1)).strftime(DATETIME_FMT)},
-        headers={"x-api-key": API_KEY},
         response_filter=lambda response: json.loads(response.text)
     )
 
